@@ -16,10 +16,10 @@ Use run_make_all_datasets.sh to create datasets for the required set of paramete
 Once the datasets are made, use run_all_synthetic.sh to run our proposed methods on the created synthetic data
 
 The methods listed in the paper correspond to the following variables:
-    GIL - Corrected (estimated)
-    GIL* - Corrected (oracle)
-    GNIL1 - corrected_l (estimated)
-    GNIL2 - corrected_l (estimateNG)
-    GNIL* - corrected_l (oracle)
+    GIL - Corrected (estimated) //
+    GIL* - Corrected (oracle)   //
+    GNIL1 - corrected_l (estimated) //
+    GNIL2 - corrected_l (estimateNG) //
+    GNIL* - corrected_l (oracle) //
 
 Use geneticVariant_experiments.py to run the experiment in the case study
