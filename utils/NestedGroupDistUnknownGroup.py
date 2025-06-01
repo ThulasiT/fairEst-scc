@@ -6,23 +6,26 @@ from scipy.linalg import sqrtm
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 
-from pnuem.emutils import em_opt
+from utils.emutils import em_opt
+from utils.NestedGroupDist import NestedGroupDist
 
+class NestedGroupDistUnknownGroup(NestedGroupDist):
 
-class NestedGroupDist():
-
-    def __init__(self, x_unlabeled,
-                 x_labeled,
-                 unlabeled_groups, labeled_groups,
-                 components, num_classes: int = 2, num_groups: int = 2):
-
+    def __init__(self, x_unlabeled=None,
+                 x_labeled=None,
+                 unlabeled_groups=None,
+                 components=None, num_classes: int = 2, num_groups: int = 2):
+        super(NestedGroupDistUnknownGroup, self).__init__(
+            x_unlabeled=x_unlabeled, x_labeled=x_labeled,
+            unlabeled_groups=unlabeled_groups, labeled_groups=None,
+            components=components, num_classes=num_classes, num_groups=num_groups)
         """
+        Use this class when labeled data has unknown group information
         :param x_unlabeled: numpy array of points shape=[num_points,dim]
         :param x_labeled: iterable of numpy arrays, corresponding to each class.
                           The index matches that of Ks, e.g. the first array here corresponds to the class
                           listed first in Ks
         :param unlabeled_groups: group labels for X_unlabeled
-        :param labeled_groups: iterable of numpy arrays of group labels for X_unlabeled
         :param components: iterable of number of components or a single integer. If a single integer, the same
                    number of components for each class will be used
         :param num_classes: int indicating the number of classes
@@ -32,7 +35,7 @@ class NestedGroupDist():
         self.X_labeled = x_labeled
         self.num_classes = num_classes
         self.unlabeled_groups = unlabeled_groups
-        self.labeled_groups = labeled_groups
+        self.labeled_groups = None
         self.num_groups = num_groups
 
         assert len(self.X_labeled) == self.num_classes
@@ -50,7 +53,7 @@ class NestedGroupDist():
 
         self.alphas = np.empty([self.num_groups, self.num_classes])  #
         self.w = [np.empty([self.num_groups, self.Ks[c]]) for c in range(self.num_classes)]
-        self.w_labeled = [np.empty([self.num_groups, self.Ks[c]]) for c in range(self.num_classes)]
+        self.w_labeled = [np.empty(self.Ks[c]) for c in range(self.num_classes)]
         self.sg = None
         self.mu = None
 
@@ -88,10 +91,7 @@ class NestedGroupDist():
         n_unlabeled = self.X_unlabeled.shape[0]
         n_unlabeled_pergroup = [(self.unlabeled_groups==g).sum().item() for g in range(self.num_groups)]
         n_labeled = [self.X_labeled[c].shape[0] for c in range(self.num_classes)]  # num labeled samples per class
-        n_labeled_pergroup = [[(self.labeled_groups[c] == g).sum().item() for g in range(self.num_groups)]
-                             for c in range(self.num_classes)]
-        alphas_l = [[np.array(n_labeled_pergroup[g][c]) / sum(n_labeled_pergroup[g]) for c in range(self.num_classes)]
-                   for g in range(self.num_groups)]
+        alpha_l = np.array(n_labeled)/sum(n_labeled)
 
 
         # initialize unlabeled means with kmeans
@@ -126,10 +126,9 @@ class NestedGroupDist():
             posteriors_labeled = [np.zeros([n_labeled[c], self.Ks[c]]) for c in range(self.num_classes)]
             for c in range(self.num_classes):
                 num_in_class = n_labeled[c]
-
                 if num_in_class > 0:
-                    posteriors_labeled[c] = self.compute_posteriors(self.X_labeled[c], self.labeled_groups[c],
-                                                                    self.w_labeled, [c], alphas_l)[0]
+                    posteriors_labeled[c] = self.compute_posteriors_nogroups(
+                        self.X_labeled[c], self.w_labeled, [c], alpha_l)[0]
 
             # M step
             # given label and component posteriors, update parameters: alphas, w, mu, and sg
@@ -138,13 +137,13 @@ class NestedGroupDist():
             # Update parameters alpha and w (depend only on unlabeled data) and w_labeled (labeled data)
             # use sorted sums for more accurate result
             p_g = [np.zeros([self.num_groups, self.Ks[c]]) for c in range(self.num_classes)]
-            p_labeled_g = [np.zeros([self.num_groups, self.Ks[c]]) for c in range(self.num_classes)]
+            p_labeled = [np.zeros([self.Ks[c]]) for c in range(self.num_classes)]
             for c in range(self.num_classes):
                 for k in range(self.Ks[c]):
                     for g in range(self.num_groups):
                         p_g[c][g, k] = np.sum(posteriors[c][self.unlabeled_groups == g, k])
-                        if n_labeled_pergroup[c][g] > 0:
-                            p_labeled_g[c][g, k] = class_scales[c] * np.sum(posteriors_labeled[c][self.labeled_groups[c] == g, k])
+                        if n_labeled[c] > 0:
+                            p_labeled[c][k] = class_scales[c] * np.sum(posteriors_labeled[c][:, k])
 
             for c in range(self.num_classes):
                 for g in range(self.num_groups):
@@ -152,9 +151,9 @@ class NestedGroupDist():
                     self.alphas[g][c] = comp_posterior_sum / n_unlabeled_pergroup[g]
                     for k in range(self.Ks[c]):
                         self.w[c][g][k] = np.sum(p_g[c][g, k]) / comp_posterior_sum
-                        if n_labeled_pergroup[c][g] > 0:
-                            lcomp_posterior_sum = np.sum(p_labeled_g[c][g, :])
-                            self.w_labeled[c][g][k] = p_labeled_g[c][g, k] / lcomp_posterior_sum
+                        if n_labeled[c] > 0:
+                            lcomp_posterior_sum = np.sum(p_labeled[c])
+                            self.w_labeled[c][k] = p_labeled[c][k] / lcomp_posterior_sum
 
             # Correct mixing proportions
             # prevent later taking log(w_i) if w_i==0
@@ -164,16 +163,16 @@ class NestedGroupDist():
                         self.w[c][g][self.w[c][g] == 0] = self.converg['eps']
                     self.w[c][g] = self.w[c][g] / np.sum(self.w[c][g])
 
-                    if n_labeled_pergroup[c][g] > 0:
-                        self.w_labeled[c][g][self.w_labeled[c][g] == 0] = self.converg['eps']
-                        self.w_labeled[c][g] = self.w_labeled[c][g] / sum(self.w_labeled[c][g])
+                if n_labeled[c] > 0:
+                    self.w_labeled[c][self.w_labeled[c] == 0] = self.converg['eps']
+                    self.w_labeled[c] = self.w_labeled[c] / sum(self.w_labeled[c])
 
             # Update parameters mu & sigma
             # sum posteriors over the points
             denom = [np.sum(posteriors[c], axis=0) for c in range(self.num_classes)]
             for c in range(self.num_classes):
                 if n_labeled[c] > 0:
-                    denom[c] += p_labeled_g[c].sum(axis=0)  # sum over groups
+                    denom[c] += p_labeled[c]
 
             self.mu = [np.zeros([self.dim, self.Ks[c]]) for c in range(self.num_classes)]
             self.sg = [np.zeros([self.dim, self.dim, self.Ks[c]]) for c in range(self.num_classes)]
@@ -300,9 +299,7 @@ class NestedGroupDist():
         self._init_empty_params()
 
         # number of  labeled samples in class c
-        n_labeled = np.array(
-            [[np.shape(self.get_group_points(self.X_labeled[c], self.labeled_groups[c], g))[0] for g
-              in range(self.num_groups)] for c in range(self.num_classes)])
+        n_labeled = np.array([self.X_labeled[c].shape[0] for c in range(self.num_classes)])
 
         if n_labeled.sum() == 0:
             # return initialized "empty" params if no labeled data
@@ -316,8 +313,8 @@ class NestedGroupDist():
             if n_labeled[c].sum() > 0:
                 w_labeled, mu_labeled[c], sg_labeled[c] = em_opt(
                     self.X_labeled[c], self.Ks[c], rnd_state=rnd_state)
-                for g in range(self.num_groups):
-                    self.w_labeled[c][g, :] = w_labeled
+
+                self.w_labeled[c] = w_labeled
 
         if initialization == 'labeled_means':  # use closest labeled means as unlabeled means
             for c in range(self.num_classes):
@@ -425,6 +422,46 @@ class NestedGroupDist():
             loglikelihood[g] = np.sum(np.log(per_point_ll))
         return sum(loglikelihood)
 
+
+    def compute_ll_nogroup(self, X, mu, sigma, w, Ks, num_classes):
+        # mu should be dim*number of components
+        # sigma should be dim*dim*number of components
+
+        N = X.shape[0]
+
+        ll = [np.zeros(N) for _ in range(num_classes)]
+
+        twopidim = (2 * np.pi) ** self.dim
+
+        for c in range(num_classes):
+            if num_classes > 1:
+                m = mu[c]  # reshape to [dim,K]?
+                sg = sigma[c]  # reshape to [dim,dim,K]?
+            else:
+                m = mu
+                sg = sigma
+
+            l = np.zeros([N, Ks[c]])
+            for k in range(Ks[c]):
+                sig_ij = sg[:, :, k]  # select sigma for component c
+                detsig = np.sqrt(twopidim * np.linalg.det(sig_ij))
+                xdiff = X - m[:, k]
+                squareterm = np.sum(np.matmul(xdiff, np.linalg.inv(sig_ij)) * xdiff, axis=1)
+                #             squareterm = np.sum((xdiff / sig_ij) * xdiff,axis=1)  # equivalend to (xdiff * inv(sig_ij)) .* xdiff
+                if num_classes > 1:
+                    wk = w[c][k]
+                else:
+                    wk = w[k]
+
+                N_ck = wk * np.exp(-0.5 * squareterm) / detsig
+                N_ck[N_ck == 0] = self.converg['eps']
+                l[:, k] = N_ck
+            ll[c] = np.sum(l, axis=1)  # sums over component terms
+
+        per_point_ll = np.vstack([ll[c] for c in range(num_classes)]).T.sum(axis=1)
+        loglikelihood = np.sum(np.log(per_point_ll))
+        return loglikelihood
+
     def pnu_loglikelihood(self, class_scales):
 
         # Compute loglikelihood for all components (unlabeled, labeled for each class c)
@@ -442,10 +479,10 @@ class NestedGroupDist():
         ll_l = [0 for _ in range(self.num_classes)]
         for c in range(self.num_classes):
             if N_labeled[c] > 0:
-                ll_labeled[c] = self.compute_ll(self.X_labeled[c], self.labeled_groups[c],
-                                                self.mu[c], self.sg[c],
-                                                self.w_labeled[c], [self.Ks[c]],
-                                                num_classes=1)
+                ll_labeled[c] = self.compute_ll_nogroup(self.X_labeled[c],
+                                                        self.mu[c], self.sg[c],
+                                                        self.w_labeled[c], [self.Ks[c]],
+                                                        num_classes=1)
                 ll_l[c] = ll_labeled[c] / N_labeled[c]
 
         ll_unlabeled = ll / N_unlabeled
@@ -481,6 +518,39 @@ class NestedGroupDist():
                     mult[k, g] = alphas[g][c] * weights[c][g][k] / np.sqrt((2 * np.pi) ** self.dim * det_sig[k])
 
                     numerator_N[c][group_labels == g, k] = mult[k,g] * np.exp(-0.5 * expsum)
+
+        # denominator is sum over classes and components
+        denom = np.vstack([np.sum(numerator_N[c], axis=1) for c in classes]).sum(axis=0)
+        denom[denom == 0] = self.converg['eps']
+        for c in classes:
+            for k in range(self.Ks[c]):
+                posteriors[c][:, k] = numerator_N[c][:, k] / denom
+
+        return [posteriors[c] for c in classes]
+
+    def compute_posteriors_nogroups(self, X, weights, classes, alphas):
+
+        n = X.shape[0]
+        posteriors = [np.zeros([n, self.Ks[c]]) for c in range(self.num_classes)]
+        numerator_N = [np.zeros([n, self.Ks[c]]) for c in range(self.num_classes)]
+
+        for c in classes:
+            inv_sig = np.zeros([self.Ks[c], self.dim, self.dim])
+            det_sig = np.zeros([self.Ks[c]])
+            mult = np.zeros([self.Ks[c]])
+            for k in range(self.Ks[c]):  # components within class
+
+                sig = np.reshape(self.sg[c][:, :, k],
+                                 [self.dim, self.dim])  # select sigma for component c, subcomponent k
+                inv_sig[k, :, :] = np.linalg.inv(sig)
+                sqrtinvsig = sqrtm(inv_sig[k, :, :])
+                det_sig[k] = np.linalg.det(sig)
+
+                t_N = X - self.mu[c][:, k]  # N x dim
+                expsum = np.sum(np.matmul(t_N, sqrtinvsig) ** 2, axis=1)
+                mult[k] = alphas[c] * weights[c][k] / np.sqrt((2 * np.pi) ** self.dim * det_sig[k])
+
+                numerator_N[c][:, k] = mult[k] * np.exp(-0.5 * expsum)
 
         # denominator is sum over classes and components
         denom = np.vstack([np.sum(numerator_N[c], axis=1) for c in classes]).sum(axis=0)

@@ -1,5 +1,5 @@
 import random
-from pnuem.Mixture import NMixture, PUMixture
+from utils.Mixture import NMixture, PUMixture
 import numpy as np
 
 def generateSamples(d1_pos_ub, d1_neg_ub, d2_pos_ub, d2_neg_ub, d1_pos_bias, d1_neg_bias, \

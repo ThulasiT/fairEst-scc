@@ -5,13 +5,13 @@ import pickle
 import pandas as pd
 from tqdm import tqdm
 
-from pnuem.generate import generateSamples
-from pnuem.Mixture import NMixture, PUMixture
-import pnuem.mixtureUtils as mixtureUtils
-from pnuem.NestedGroupDist import NestedGroupDist
-from pnuem.NestedGroupDistUnknownGroup import NestedGroupDistUnknownGroup
-import pnuem.correct_metrics as correct_metrics
-import pnuem.correct_metrics_unknowngroups as correct_metrics_unknowngroups
+from utils.generate import generateSamples
+from utils.Mixture import NMixture, PUMixture
+import utils.mixtureUtils as mixtureUtils
+from utils.NestedGroupDist import NestedGroupDist
+from utils.NestedGroupDistUnknownGroup import NestedGroupDistUnknownGroup
+import utils.correct_metrics as correct_metrics
+import utils.correct_metrics_unknowngroups as correct_metrics_unknowngroups
 
 parser = argparse.ArgumentParser('get_fairness_metrics')
 parser.add_argument("--output", type=str, default="synthetic_results",
