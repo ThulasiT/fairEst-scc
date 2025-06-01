@@ -18,6 +18,8 @@ parser.add_argument("--output", type=str, default="synthetic_results",
                     help="Path to file where the metrics are to be stored")
 parser.add_argument("--dataset_path", type=str, default="synthetic_data",
                     help="Path with saved datasets")
+parser.add_argument("--savemodel", action='store_true',
+                    help="Use this flag to save estimated model parameters to file. Will be saved to output path set by --output")
 parser.add_argument("--etaType", type=str, choices=["equal", "minority"], nargs="?", default="equal",
                     help="Choose whether the groups are equally populated or minority")
 parser.add_argument("--estimate", action='store_true',
@@ -58,10 +60,10 @@ dimensions = [2, 8] if args.dim is None else [args.dim]
 components = [2, 4, 8] if args.comp is None else [args.comp]
 
 total_samples = 25000  # Total number of data samples
-lam = args.lam  # Proportion of unbiased points in the total data
+lam = args.lam  # Proportion of biased (labeled) points in the total data
 
 num_groups = 2
-classifier_threshold = 'fixed'  #'adaptive'  #
+classifier_threshold = 'fixed' # classifier threshold set to 0.5. Use 'alternative' to use estimated alpha
 
 # Fixed alphas
 alpha = [0.5, 0.5]  # Fraction of positive unbiased samples from each group
@@ -75,6 +77,9 @@ folder_name = args.output
 os.makedirs(folder_name, exist_ok=True)
 # data path
 dataset_path = args.dataset_path
+
+# to save estimated model parameters to pickle file
+save_model_params = args.savemodel
 
 for dim in dimensions:
     for comp in components:
@@ -477,19 +482,6 @@ for dim in dimensions:
                     else:
                         class_threshold = est_alpha_l[1]
 
-                    #y1_all_bias = getModelScores(model, s1_bias) >= class_threshold
-                    #y1_pos_bias = y_bias['pos'][0] >= class_threshold
-                    #y1_neg_bias = y_bias['neg'][0] >= class_threshold
-                    #y2_all_bias = getModelScores(model, s2_bias) >= class_threshold
-                    #y2_pos_bias = y_bias['pos'][1] >= class_threshold
-                    #y2_neg_bias = y_bias['neg'][1] >= class_threshold
-
-                    #y1_all_ub = getModelScores(model, s1_ub) >= class_threshold
-                    #y1_pos_ub = y_ub['pos'][0] >= class_threshold
-                    #y1_neg_ub = y_ub['neg'][0] >= class_threshold
-                    #y2_all_ub = getModelScores(model, s2_ub) >= class_threshold
-                    #y2_pos_ub = y_ub['pos'][1] >= class_threshold
-                    #y2_neg_ub = y_ub['neg'][1] >= class_threshold
 
                     YSoft_u = est_d_ub.pn_posterior(s_ub).reshape(-1, 1)
                     # Since we do not have labels from the unlabeled data,
@@ -673,14 +665,7 @@ for dim in dimensions:
                     else:
                         class_threshold = alpha_l_est
 
-                    #y_all_bias = getModelScores(model, s_all_bias) >= class_threshold
-                    #y_pos_bias = getModelScores(model, s_pos_bias) >= class_threshold
-                    #y_neg_bias = getModelScores(model, s_neg_bias) >= class_threshold
-
-                    #y_all_ub = getModelScores(model, s_ub) >= class_threshold
-                    #y_pos_ub = getModelScores(model, s_pos_ub) >= class_threshold
-                    #y_neg_ub = getModelScores(model, s_neg_ub) >= class_threshold
-
+                    
                     YSoft_u = est_d_ub.pn_posterior(s_ub).reshape(-1, 1)
                     # Since we do not have labels from the unlabeled data,
                     # we use the posterior probability from the GMM as soft labels
@@ -755,12 +740,9 @@ for dim in dimensions:
 
                 # Save fairness metrics data as npz files for each dimension
                 np.savez(file_path, **{"oracle": oracle_measures, "estimated": estimated_measures, 'estimated_ng': estimated_measures_ng})
+            
+            if save_model_params and nested_group_EM is not None:
+                with open(file_path.split('.npz')[0] + '_gmm_model.pkl', 'wb') as f:
+                    run_intermediate = {'index': i, 'EMmodel': nested_group_EM}
 
-            with open(file_path.split('.npz')[0] + '_gmm_model.pkl', 'wb') as f:
-                run_intermediate = {'index': i, 'EMmodel': nested_group_EM}
-                                    #'NNmodel': model,
-                                    #'sample': {'s1_pos_ub': s1_pos_ub, 's1_neg_ub': s1_neg_ub,
-                                    #           's2_pos_ub': s2_pos_ub, 's2_neg_ub': s2_neg_ub,
-                                    #           's1_pos_bias': s1_pos_bias, 's1_neg_bias': s1_neg_bias,
-                                    #           's2_pos_bias': s2_pos_bias, 's2_neg_bias': s2_neg_bias}}
-                pickle.dump(run_intermediate, f)
+                    pickle.dump(run_intermediate, f)
