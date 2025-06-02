@@ -4,11 +4,11 @@ import os
 import pickle
 from tqdm import tqdm
 
-from Mixture import NMixture, PUMixture
-import mixtureUtils
-from pnuem.NestedGroupDistUnknownGroup import NestedGroupDistUnknownGroup
-import correct_metrics_unknowngroups
-import correct_metrics
+from utils.Mixture import NMixture, PUMixture
+import utils.mixtureUtils as mixtureUtils
+from utils.NestedGroupDistUnknownGroup import NestedGroupDistUnknownGroup
+from utils import correct_metrics_unknowngroups
+from utils import correct_metrics
 
 
 def parse_args():
@@ -297,7 +297,7 @@ def main():
 
                 # predictive positive value = TPR*alpha / (TPR*alpha + FPR*(1-alpha))
                 ppv_group_difference = correct_metrics_unknowngroups.correct_ppv(
-                    eo, pe, alpha_est, eo_bias_withUL, pe_bias_withUL)
+                    eo, pe, alpha_est)
 
                 ppv_bias_withLabelled = {g: eo['eo_bias_withLabelled'][g] * alpha_est[g] / (
                         eo['eo_bias_withLabelled'][g] * alpha_est[g] + pe['pe_bias_withLabelled'][g] * (1 - alpha_est[g]))
