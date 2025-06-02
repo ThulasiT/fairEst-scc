@@ -729,7 +729,7 @@ for dim in dimensions:
 
                     # predictive positive value = TPR*alpha / (TPR*alpha + FPR*(1-alpha))
                     ppv_group_difference = correct_metrics_unknowngroups.correct_ppv(
-                        eo, pe, alpha_est,  eo_bias_withUL, pe_bias_withUL)
+                        eo, pe, alpha_est)
 
                     estimated_measures_ng["ppv"]["corrected_l"].append(
                         abs(ppv_group_difference['corrected_l'] - ppv_group_difference['unbiased']))
