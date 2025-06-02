@@ -15,6 +15,8 @@ For synthetic data experiments:
 Use run_make_all_datasets.sh to create datasets for the required set of parameters
 Once the datasets are made, use run_all_synthetic.sh to run our proposed methods on the created synthetic data
 
+demo.ipynb can be used to estimate fairness metrics for a single set of parameters
+
 The methods listed in the paper correspond to the following variables:
     GIL - Corrected (estimated) //
     GIL* - Corrected (oracle)   //
